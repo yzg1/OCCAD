@@ -15,17 +15,17 @@ python setup.py build_ext --inplace
 Preparing train、validation、test  and rendering lists via (If you have these lists, you can skip this step)
 
 ```
-python create_split.py --dataRoot <Input data directory path> --outputDir <Output data directory path>
+python create_split.py
 python generate_renderings.py
 ```
 
 You must prepare points and occupancy values in your data, you can make this via (If you have these, you can skip this step)
 
 ```
-python pc_occ.py
+python occgen.py
 ```
 
-Then you can build your dataset via
+Then you can check your dataset via
 
 ```
 python dataset.py
@@ -42,6 +42,7 @@ python train.py
 Where there are some parameters you can choose
 
 ```
+--cuda          Gpu ids
 --dataRoot      Data root path
 --batchSize     Inputing batch size you want, default 64
 --lr            Initial learning rate, default 1e-6
