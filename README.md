@@ -11,6 +11,7 @@ python setup.py build_ext --inplace
 ```
 
 ## Dataset
+Because the dataset is large, if you want to get it, please feel free to contact me via youzhenguo65@gmail.com.
 
 Preparing train、validation、test  and rendering lists via (If you have these lists, you can skip this step)
 
