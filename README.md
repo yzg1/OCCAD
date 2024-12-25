@@ -81,5 +81,3 @@ If you meet `numpy/arrayobject.h: No such file or directory`,you can solve it vi
 ```
 sudo apt-get install python-numpy
 ```
-
-If you unable to install resnet18, you can copy `resnet18-f37072fd.pth` to `/root/.cache/torch/hub/checkpoints`
