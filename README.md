@@ -11,7 +11,7 @@ python setup.py build_ext --inplace
 ```
 
 ## Dataset
-I have given the data list I used in abc file. Because the dataset is large, if you want to get it, please feel free to contact me via youzhenguo65@gmail.com.
+I have given the data lists I used in abc file. Because the dataset is large, if you want to get it, please feel free to contact me via youzhenguo65@gmail.com.
 
 Preparing the rendering lists via (If you have these lists, you can skip this step)
 
