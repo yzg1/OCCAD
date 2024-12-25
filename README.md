@@ -1,4 +1,4 @@
-# Using Your own data to Train Occupancy Network
+# Using Sketches to Train Occupancy Network
 
 ## Installation
 
