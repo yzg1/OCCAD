@@ -7,6 +7,94 @@ from layers import (CResnetBlockConv1d, CBatchNorm1d, CBatchNorm1d_legacy)
 import resnet
 
 """
+池化层，通过最大值池化将点云降维
+"""
+# class PointPooling(nn.Module):
+    # def __init__(self, input_dim, output_dim, pooling_factor=2):
+        # super(PointPooling, self).__init__()
+        # self.conv = nn.Conv1d(input_dim, output_dim, 1)  # 卷积层
+        # self.pooling_factor = pooling_factor
+
+    # def forward(self, x):
+        # 输入形状 (B, D, N)，D 为维度，N 为点数
+        # x = self.conv(x)  # 维度映射
+        # x = F.max_pool1d(x, self.pooling_factor)  # 池化降维
+        # return x
+
+"""
+通过 Farthest Point Sampling (FPS) 对点云进行聚类降维
+"""
+def farthest_point_sampling(points, num_samples):
+    """
+    最远点采样（Farthest Point Sampling）。
+    
+    Args:
+        points (torch.Tensor): 输入点云，形状为 (B, N, D)。
+        num_samples (int): 采样的点数量。
+    
+    Returns:
+        torch.Tensor: 采样后的点云，形状为 (B, num_samples, D)。
+    """
+    B, N, D = points.shape
+    sampled_points = torch.zeros(B, num_samples, D, device=points.device)
+    indices = torch.zeros(B, num_samples, dtype=torch.long, device=points.device)
+    
+    for b in range(B):
+        # 初始化
+        distances = torch.ones(N, device=points.device) * 1e10
+        farthest = torch.randint(0, N, (1,), device=points.device)
+        
+        for i in range(num_samples):
+            indices[b, i] = farthest
+            sampled_points[b, i] = points[b, farthest]
+            dist = torch.norm(points[b] - points[b, farthest], dim=1)
+            distances = torch.min(distances, dist)
+            farthest = torch.argmax(distances)
+    
+    return sampled_points
+
+"""
+对输入点云进行随机采样从而减少序列长度, 减少显存占用
+"""
+def random_sampling(points, num_samples):
+    """
+    随机从点云中采样固定数量的点。
+    
+    Args:
+        points (torch.Tensor): 输入点云，形状为 (B, N, D)。
+        num_samples (int): 采样的点数量。
+    
+    Returns:
+        torch.Tensor: 采样后的点云，形状为 (B, num_samples, D)。
+    """
+    batch_size, num_points, dim = points.shape
+    if num_points <= num_samples:
+        return points  # 如果点数小于采样点数，直接返回原始点云
+    
+    # 随机生成采样索引
+    indices = torch.randperm(num_points)[:num_samples].to(points.device)
+    sampled_points = points[:, indices, :]
+    return sampled_points
+
+"""
+
+自注意力模块
+在 DecoderCBatchNorm 解码器中引入自注意力机制, 残差块之间加入了自注意力模块 attn1 和 attn2
+"""
+class SelfAttention(nn.Module):
+    def __init__(self, hidden_size):
+        super(SelfAttention, self).__init__()
+        self.attention = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=1, batch_first=True)
+
+    def forward(self, x):
+        # 输入 x 形状: (batch_size, hidden_size, num_points)
+        x = x.permute(0, 2, 1)  # 转换为 (batch_size, num_points, hidden_size)
+        attn_output, _ = self.attention(x, x, x)  # 自注意力
+        x = attn_output + x  # 残差连接
+        x = x.permute(0, 2, 1)  # 转换回 (batch_size, hidden_size, num_points)
+        return x
+
+"""
 定义一个 Decoder，用于根据条件特征解码点的占据概率logits。
 """
 class DecoderCBatchNorm(nn.Module):
@@ -24,13 +112,17 @@ class DecoderCBatchNorm(nn.Module):
                  hidden_size=256, leaky=False, legacy=False):
         super(DecoderCBatchNorm, self).__init__()
 
-        self.fc_p = nn.Conv1d(dim, hidden_size, 1) # 输入的点p通过一维卷积映射到隐藏层大小
+        self.fc_p = nn.Conv1d(dim, hidden_size, 1) # 输入的点p通过一维卷积映射到隐藏层大小      
+        # self.pooling = PointPooling(hidden_size, hidden_size, pooling_factor=2)  # 添加池化层
+        
         # 定义多个条件残差块，将条件特征c融入点的隐藏表示
         self.block0 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block1 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
+        # self.attn1 = SelfAttention(hidden_size)  # 加入自注意力机制
         self.block2 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block3 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block4 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
+        # self.attn2 = SelfAttention(hidden_size)  # 再次加入自注意力机制
         
         # 根据参数选择新式或旧式的条件批归一化层
         if not legacy:
@@ -49,17 +141,24 @@ class DecoderCBatchNorm(nn.Module):
         else:
             self.actvn = lambda x: F.leaky_relu(x, 0.2)
 
-    def forward(self, p, c, **kwargs):
+    def forward(self, p, c, num_samples=4096, **kwargs):
+        # 使用随机采样
+        # p = random_sampling(p, num_samples=num_samples)
+        
         p = p.transpose(1, 2)    # 将点p的维度从 (B, N, D) 转置为 (B, D, N) 以匹配卷积层要求
         # batch_size, D, T = p.size()
         net = self.fc_p(p)       # 将输入点通过卷积层映射到隐藏空间
 
+        # net = self.pooling(net)  # 池化操作降低维数
+        
         # 依次通过多个条件残差块，将条件特征c注入隐藏表示
         net = self.block0(net, c)
         net = self.block1(net, c)
+        # net = self.attn1(net)     # 自注意力
         net = self.block2(net, c)
         net = self.block3(net, c)
         net = self.block4(net, c)
+        # net = self.attn2(net)     # 自注意力
 
         # 对隐藏表示归一化（结合条件特征），应用激活函数，再映射到输出logits
         out = self.fc_out(self.actvn(self.bn(net, c)))
@@ -85,7 +184,12 @@ class OccupancyNetwork(nn.Module):
     def __init__(self, z_dim=256):
         super(OccupancyNetwork, self).__init__()
         # encoder: 使用 ResNet-18 提取图像特征，特征维度为 z_dim=256
-        self.encoder = resnet.Resnet18(z_dim)
+        # self.encoder = resnet.Resnet18(z_dim, input_channels=1)
+        self.encoder = resnet.Resnet34(z_dim, input_channels=1)    # 改用更深的resnet
+        
+        # 添加 Dropout 层，用于在特征编码后随机丢弃一部分特征
+        # self.dropout = nn.Dropout(p=dropout_prob)  # Dropout 概率默认为 30%
+        
         # decoder: 条件解码器，将特征 c 和点云 p 解码为占据概率
         self.decoder = DecoderCBatchNorm(dim=3, c_dim=256, hidden_size=256)
         # sigmoid: 用于将 logits 转换为概率
@@ -100,9 +204,12 @@ class OccupancyNetwork(nn.Module):
             img (tensor): input image
             p (tensor): sampled points
         '''
-        img = img[:, :3, :, :].contiguous()
+        # img = img[:, :3, :, :].contiguous()
 
         c = self.encoder(img)
+        
+        # 在特征 c 上应用 Dropout
+        # c = self.dropout(c)
 
         logits = self.decoder(p, c)
         p_occ = dist.Bernoulli(logits=logits).logits
@@ -119,6 +226,7 @@ class OccupancyNetwork(nn.Module):
 
         if self.encoder is not None:
             c = self.encoder(inputs) # 编码输入inputs为条件特征c
+            # c = self.dropout(c)      # 应用 Dropout
         else:
             # Return inputs?
             c = torch.empty(inputs.size(0), 0) # 如果编码器为空，返回空张量
@@ -141,6 +249,7 @@ class OccupancyNetwork(nn.Module):
 
     def predict(self, img, pts):
         c = self.encoder(img)  # 提取图像特征 c
+        # c = self.dropout(c)    # 应用 Dropout
 
         # print('p_shape', p.size())
         pts_occ = self.decode(pts, c).logits     # 解码点 pts 的占据概率 logits
