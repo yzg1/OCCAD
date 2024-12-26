@@ -9,17 +9,17 @@ import resnet
 """
 池化层，通过最大值池化将点云降维
 """
-# class PointPooling(nn.Module):
-    # def __init__(self, input_dim, output_dim, pooling_factor=2):
-        # super(PointPooling, self).__init__()
-        # self.conv = nn.Conv1d(input_dim, output_dim, 1)  # 卷积层
-        # self.pooling_factor = pooling_factor
+class PointPooling(nn.Module):
+    def __init__(self, input_dim, output_dim, pooling_factor=2):
+        super(PointPooling, self).__init__()
+        self.conv = nn.Conv1d(input_dim, output_dim, 1)  # 卷积层
+        self.pooling_factor = pooling_factor
 
-    # def forward(self, x):
+    def forward(self, x):
         # 输入形状 (B, D, N)，D 为维度，N 为点数
-        # x = self.conv(x)  # 维度映射
-        # x = F.max_pool1d(x, self.pooling_factor)  # 池化降维
-        # return x
+        x = self.conv(x)  # 维度映射
+        x = F.max_pool1d(x, self.pooling_factor)  # 池化降维
+        return x
 
 """
 通过 Farthest Point Sampling (FPS) 对点云进行聚类降维
@@ -118,11 +118,11 @@ class DecoderCBatchNorm(nn.Module):
         # 定义多个条件残差块，将条件特征c融入点的隐藏表示
         self.block0 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block1 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
-        # self.attn1 = SelfAttention(hidden_size)  # 加入自注意力机制
+        self.attn1 = SelfAttention(hidden_size)  # 加入自注意力机制
         self.block2 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block3 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
         self.block4 = CResnetBlockConv1d(c_dim, hidden_size, legacy=legacy)
-        # self.attn2 = SelfAttention(hidden_size)  # 再次加入自注意力机制
+        self.attn2 = SelfAttention(hidden_size)  # 再次加入自注意力机制
         
         # 根据参数选择新式或旧式的条件批归一化层
         if not legacy:
@@ -154,11 +154,11 @@ class DecoderCBatchNorm(nn.Module):
         # 依次通过多个条件残差块，将条件特征c注入隐藏表示
         net = self.block0(net, c)
         net = self.block1(net, c)
-        # net = self.attn1(net)     # 自注意力
+        net = self.attn1(net)     # 自注意力
         net = self.block2(net, c)
         net = self.block3(net, c)
         net = self.block4(net, c)
-        # net = self.attn2(net)     # 自注意力
+        net = self.attn2(net)     # 自注意力
 
         # 对隐藏表示归一化（结合条件特征），应用激活函数，再映射到输出logits
         out = self.fc_out(self.actvn(self.bn(net, c)))
