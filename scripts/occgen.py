@@ -35,20 +35,24 @@ def process_mesh(mesh_path, num_samples=100000, padding=0.05):
     
     # Determine occupancy for the entire point set
     occupancies = np.array([ray_mesh_intersections(mesh, point) for point in points])
-    
+    # Separate occupancies
+    inside_occupancies = occupancies[occupancies==1]
+    outside_occupancies = occupancies[occupancies==0]
     # Subsample occupancies and not points
     # indices = np.random.choice(num_samples, subsampled_size, replace=False)
     # occupancies_subsampled = occupancies[indices]
     
     # Compress occupancies
-    compressed_occupancies = np.packbits(occupancies.astype(np.uint8))
+    # compressed_occupancies = np.packbits(occupancies.astype(np.uint8))
     
     # Surface sampling
     surface_points, _ = trimesh.sample.sample_surface_even(mesh, num_samples)
     
     return {
         'points': points,
-        'occupancies': compressed_occupancies,
+        'inside_occupancies': inside_occupancies,
+        'outside_occupancies': outside_occupancies,
+        'occupancies': occupancies,
         'loc': mesh.bounding_box.centroid,
         'scale': longest_edge
     }, surface_points
@@ -67,7 +71,7 @@ def main(input_dir, output_dir):
     # Walk through input directory
     for root, dirs, files in os.walk(input_dir):
         for file in files:
-            if file.endswith('.obj'):
+            if file.endswith('.off'):
                 # Construct full file paths
                 mesh_path = os.path.join(root, file)
                 
@@ -109,6 +113,6 @@ def main(input_dir, output_dir):
     print(f"Skipped files: {skipped_count}")
 
 if __name__ == '__main__':
-    input_dir = r'F:/obj/abc_watertight'
-    output_dir = r'C:/Users/25581/Desktop/points/pc_occ'
+    input_dir = r'/data/coding/occgen'
+    output_dir = r'/data/coding/occgen/pc_occ'
     main(input_dir, output_dir)
