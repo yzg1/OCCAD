@@ -113,6 +113,6 @@ def main(input_dir, output_dir):
     print(f"Skipped files: {skipped_count}")
 
 if __name__ == '__main__':
-    input_dir = r'/data/coding/occgen'
+    input_dir = r'/data/coding/occgen/abc'
     output_dir = r'/data/coding/occgen/pc_occ'
     main(input_dir, output_dir)
